@@ -1,0 +1,25 @@
+surak: v2
+id: release-policy
+name: Release Policy
+
+applies-to:
+  - .github/workflows/release.yml
+
+policies:
+  actor_allowlist:
+    enabled: true
+    allow:
+      - aloenobilis
+
+  runner_type:
+    enabled: true
+    require: github-hosted
+
+  runner_os:
+    enabled: true
+    allow:
+      - Linux
+
+  branch_protection:
+    enabled: true
+    require: main

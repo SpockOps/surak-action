@@ -1,0 +1,85 @@
+name: Surak Policy Engine
+description: Enforce prebuilt policies on your GitHub Actions workflows — actor, runner, branch, and required checks.
+author: SpockOps
+
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  policies-dir:
+    description: Path to the directory containing .surak policy files
+    required: false
+    default: ".surak/"
+
+  version:
+    description: Surak package version to install. Defaults to latest.
+    required: false
+    default: "latest"
+
+  strict:
+    description: Exit 1 on policy failure. Set to false for warn-only mode.
+    required: false
+    default: "true"
+
+outputs:
+  result:
+    description: JSON evaluation result from surak eval
+    value: ${{ steps.eval.outputs.result }}
+
+  passed:
+    description: "true if all policies passed, false otherwise"
+    value: ${{ steps.eval.outputs.passed }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install Surak
+      shell: bash
+      run: |
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          pip install surak --quiet
+        else
+          pip install "surak==${{ inputs.version }}" --quiet
+        fi
+
+    - name: Evaluate policies
+      id: eval
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+      run: |
+        STRICT_FLAG="--strict"
+        if [ "${{ inputs.strict }}" != "true" ]; then
+          STRICT_FLAG="--no-strict"
+        fi
+
+        set +e
+        RESULT=$(surak eval "${{ inputs.policies-dir }}" \
+          --json-output \
+          $STRICT_FLAG)
+        EXIT_CODE=$?
+        set -e
+
+        # Write full JSON result to output
+        echo "result<<EOF" >> $GITHUB_OUTPUT
+        echo "$RESULT" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+        # Write simple passed boolean
+        if [ $EXIT_CODE -eq 0 ]; then
+          echo "passed=true" >> $GITHUB_OUTPUT
+        else
+          echo "passed=false" >> $GITHUB_OUTPUT
+        fi
+
+        # Echo result to logs
+        echo "$RESULT"
+
+        # Honour strict mode
+        exit $EXIT_CODE

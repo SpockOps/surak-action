@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 1.0.0)"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run — skip tagging and release creation"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  policy-gate:
+    name: Surak Policy Gate
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Surak
+        run: pip install surak
+
+      - name: Evaluate policies
+        run: |
+          surak eval .surak/ \
+            --workflow .github/workflows/release.yml \
+            --json-output
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    name: Tag & Release v${{ inputs.version }}
+    runs-on: ubuntu-22.04
+    needs: policy-gate
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate version format
+        run: |
+          if ! echo "${{ inputs.version }}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "✗ Invalid version format: ${{ inputs.version }}"
+            echo "  Expected: X.Y.Z (e.g. 1.0.0)"
+            exit 1
+          fi
+
+      - name: Check tag does not already exist
+        run: |
+          if git ls-remote --tags origin | grep -q "refs/tags/v${{ inputs.version }}$"; then
+            echo "✗ Tag v${{ inputs.version }} already exists"
+            exit 1
+          fi
+
+      - name: Dry run summary
+        if: ${{ inputs.dry_run }}
+        run: |
+          echo "✓ Dry run — no tags or releases will be created"
+          echo "  Version:  v${{ inputs.version }}"
+          echo "  Tags:     v${{ inputs.version }}, v$(echo ${{ inputs.version }} | cut -d. -f1)"
+          echo "  Actor:    ${{ github.actor }}"
+          echo "  Branch:   ${{ github.ref_name }}"
+
+      - name: Create tags
+        if: ${{ !inputs.dry_run }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+
+          MAJOR="v$(echo ${{ inputs.version }} | cut -d. -f1)"
+          git tag -d "$MAJOR" 2>/dev/null || true
+          git push origin ":refs/tags/$MAJOR" 2>/dev/null || true
+          git tag "$MAJOR" -m "Release $MAJOR (latest)"
+
+          git push origin "v${{ inputs.version }}"
+          git push origin "$MAJOR"
+
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ inputs.version }}" \
+            --title "v${{ inputs.version }}" \
+            --notes "$(cat CHANGELOG.md)" \
+            --latest
