@@ -22,6 +22,14 @@ inputs:
     required: false
     default: "true"
 
+  environment:
+    description: |
+      The GitHub environment name for this job (e.g. production, staging).
+      GitHub does not expose environment: as a shell variable — pass it explicitly
+      if you are using environments: in your Surak policies.
+    required: false
+    default: ""
+
 outputs:
   result:
     description: JSON evaluation result from surak eval
@@ -48,11 +56,16 @@ runs:
           pip install "surak==${{ inputs.version }}" --quiet
         fi
 
+    - name: Surak
+      shell: bash
+      run: surak haiku
+
     - name: Evaluate policies
       id: eval
       shell: bash
       env:
         GITHUB_TOKEN: ${{ env.GITHUB_TOKEN }}
+        SURAK_ENVIRONMENT: ${{ inputs.environment }}
       run: |
         STRICT_FLAG="--strict"
         if [ "${{ inputs.strict }}" != "true" ]; then
