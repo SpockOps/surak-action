@@ -17,8 +17,12 @@ jobs:
   policy-gate:
     name: Surak Policy Gate
     runs-on: ubuntu-22.04
+    environment: production
     permissions:
       contents: read
+    outputs:
+      environment: production
+
 
     steps:
       - uses: actions/checkout@v4
@@ -38,6 +42,7 @@ jobs:
             --json-output
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SURAK_ENVIRONMENT: production
 
   release:
     name: Tag & Release v${{ inputs.version }}

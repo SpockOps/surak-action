@@ -5,6 +5,10 @@ name: Release Policy
 applies-to:
   - .github/workflows/release.yml
 
+
+environments:
+  - production
+
 policies:
   actor_allowlist:
     enabled: true
